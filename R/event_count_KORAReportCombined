@@ -1,0 +1,78 @@
+#' Event Counting
+#'
+#'
+#'This function creates a table with the number of event for a given species.
+#'Input needed:
+#'    - KORA.Photo.Output = "Nameofcsv.csv" KORA ouput with lynx or any other species observed (All have been IDed)
+#'    Important Note:
+#'    - The csv must be in the folder of the used RStudio Project
+#'    - Date in the csv must be in '%Y-%m-%d %H:%M:%S' (Standard KORA data and R format)
+#'
+#' @param # Author: Luc Le Grand
+#' @return
+#' @export
+EvCountR<-function(
+    Table_Object,
+    Event_interval){
+  
+
+  # ---- Import KORA Report and Main Filters ####
+  
+  #Import Table
+  M.Table<-data.table::fread(Table_Object)
+  
+  #counting event of observations type camera trap only
+  M.Table<-M.Table[M.Table$observation_type=="CAMERA_TRAP",] 
+  #Event should be validated
+  M.Table<-M.Table[M.Table$event_status=="VALIDATED",]
+  #Event should not be sensitive
+  M.Table<-M.Table[M.Table$event_sensitive==0,]
+  #The Observation should have a media (and Media.date)
+  M.Table<-M.Table[M.Table$media_date!="",]
+ 
+  #Select columns needed and renam
+  M.Table<-M.Table[,c("media_date","event_fieldName","event_x","event_y")]
+  names(M.Table)<-c("TIME","Site","x","y")
+  
+
+  
+  # ---- Arange Master Table ####
+  
+  #Time/Date info
+  M.Table$TIME <- as.POSIXct(M.Table$TIME, format= '%d.%m.%Y %H:%M')
+  M.Table$XY<-paste(M.Table$x,M.Table$y, sep=";")
+  
+  # ---- Create output table ####
+  Table<-data.table::data.table(Site=unique(M.Table$Site), Event=0)
+  
+  # Count number of events/N pictures
+  
+  for(i in 1:length(Table$Site)){
+    df<-data.table::data.table(timestamp = M.Table[M.Table$Site == Table[i, Site],TIME],
+                               XY =M.Table[M.Table$Site == Table[i, Site],XY])
+    
+    # Order by timestamp
+    df<-df[order(df$timestamp),]
+    
+    # Compute time difference
+    df[, time_diff := c(Inf, diff(timestamp))]
+    
+    # Identify new events (time gap > Event_interval (in seconds))
+    df[, event_id := cumsum(time_diff > Event_interval)]  
+    
+    # Count unique events and pictures
+    Table[i, "Event"]<-length(unique(df$event_id))
+    Table[i,"N pictures"]<-nrow(df)
+  }
+  
+  # creates the "Total" row
+  Table<-rbind(Table,data.table::data.table(Site = "Total", t(colSums(Table[, -1]))))
+  
+  
+  # ---- Print ouput ####
+  return(Table)
+  #cat("\n")
+  #cat("Warning:\n")
+  #cat("Total N site is equal to the total number of UNIQUE site where the species has been seen")
+  
+}
